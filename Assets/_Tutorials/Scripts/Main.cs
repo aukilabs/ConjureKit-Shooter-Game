@@ -1,5 +1,10 @@
 using System;
 using System.Collections.Generic;
+using Auki.ConjureKit;
+using Auki.ConjureKit.Manna;
+using Auki.ConjureKit.Vikja;
+using Auki.Integration.ARFoundation.Manna;
+using Auki.Util;
 using ConjureKitShooter.Gameplay;
 using ConjureKitShooter.Models;
 using ConjureKitShooter.UI;
@@ -26,9 +31,15 @@ public class Main : MonoBehaviour
     [SerializeField] private ARPlaneManager arPlaneManager;
 
     private GameState _currentGameState;
+    private IConjureKit _conjureKit;
+    private Vikja _vikja;
+    private Manna _manna;
+    private FrameFeederBase _arCameraFrameFeeder;
 
     private bool _isSharing;
-
+    private State _currentState;
+    private Session _session;
+    
     private GunScript _spawnedGun;
 
     private readonly Vector3 _screenMiddle = new Vector3(Screen.width / 2f, Screen.height / 2f, 0f);
@@ -55,6 +66,15 @@ public class Main : MonoBehaviour
     {
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
 
+        _conjureKit = new ConjureKit(arCamera.transform, "Your APP KEY", "Your APP SECRET", AukiDebug.LogLevel.ERROR);
+        _manna = new Manna(_conjureKit);
+        _vikja = new Vikja(_conjureKit);
+
+        _arCameraFrameFeeder = _manna.GetOrCreateFrameFeederComponent();
+        _arCameraFrameFeeder.AttachMannaInstance(_manna);
+        
+        EventInit();
+        
         if (Application.isEditor)
             arCamera.gameObject.AddComponent<EditorCamera>();
 
@@ -72,8 +92,71 @@ public class Main : MonoBehaviour
 
         uiManager.OnChangeState += OnChangeGameState;
         participantsController.SetListener(this);
+        
+        _conjureKit.Connect();
     }
 
+    private void EventInit()
+    {
+        _conjureKit.OnJoined += OnJoined;
+        _conjureKit.OnLeft += OnLeft;
+        _conjureKit.OnParticipantLeft += OnParticipantLeft;
+        _conjureKit.OnEntityDeleted += OnEntityDeleted;
+        _conjureKit.OnParticipantEntityCreated += OnParticipantEntityCreated;
+        _conjureKit.OnStateChanged += OnStateChange;
+
+        _manna.OnLighthouseTracked += OnLighthouseTracked;
+        _manna.OnCalibrationSuccess += OnCalibrationSuccess;
+    }
+
+    #region ConjureKit Callbacks
+    private void OnJoined(Session session)
+    {
+        _myId = session.ParticipantId;
+        _session = session;
+        
+        uiManager.SetSessionId(_session.Id);
+    }
+
+    private void OnLeft(Session lastSession)
+    {
+
+    }
+
+    private void OnParticipantLeft(uint participantId)
+    {
+
+    }
+
+    private void OnEntityDeleted(uint entityId)
+    {
+
+    }
+
+    private void OnParticipantEntityCreated(Entity entity)
+    {
+
+    }
+
+    private void OnStateChange(State state)
+    {
+        _currentState = state;
+        uiManager.UpdateState(_currentState.ToString());
+        var sessionReady = _currentState is State.Calibrated or State.JoinedSession;
+        _arCameraFrameFeeder.enabled = sessionReady;
+    }
+
+    private void OnLighthouseTracked(Lighthouse lighthouse, Pose pose, bool closeEnough)
+    {
+
+    }
+
+    private void OnCalibrationSuccess(Matrix4x4 calibrationMatrix)
+    {
+
+    }
+    #endregion
+    
     private void OnChangeGameState(GameState gameState)
     {
         _currentGameState = gameState;

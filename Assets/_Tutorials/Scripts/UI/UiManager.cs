@@ -190,6 +190,16 @@ namespace ConjureKitShooter.UI
         {
             scoreText.SetText(value.ToString("0000000"));
         }
+        
+        public void SetSessionId(string id)
+        {
+            sessionText.SetText(id);
+        }
+
+        public void UpdateState(string state)
+        {
+            stateText.SetText(state);
+        }
 
         public void ShowScoreBoard(Dictionary<uint, (string, int)> scores, string mainPlayerName)
         {
