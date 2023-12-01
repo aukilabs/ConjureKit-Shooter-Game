@@ -41,12 +41,14 @@ public class Main : MonoBehaviour
     private Session _session;
     
     private GunScript _spawnedGun;
+    private GameEventController _gameEventController = new();
 
     private readonly Vector3 _screenMiddle = new Vector3(Screen.width / 2f, Screen.height / 2f, 0f);
     private uint _myId;
     private string _myName;
     private int _score;
     private int _health;
+    private bool _spawner;
     private bool _bloodShown;
     private bool _planeOcc;
     private bool _planeHit;
@@ -86,13 +88,13 @@ public class Main : MonoBehaviour
         ToggleOcclusion(false);
         
         hostileController.Initialize(this);
-        uiManager.Initialize(GameStart, PlaceSpawner, null, OnNameSet, ToggleAudio);
+        uiManager.Initialize(SendGameStart, PlaceSpawner, ToggleLighthouse, OnNameSet, ToggleAudio);
         uiManager.UpdateScore(0);
         healthBar.SetHealthBarAlpha(0f);
 
         uiManager.OnChangeState += OnChangeGameState;
         participantsController.SetListener(this);
-        
+        _gameEventController.Initialize(_conjureKit, _vikja);
         _conjureKit.Connect();
     }
 
@@ -107,6 +109,11 @@ public class Main : MonoBehaviour
 
         _manna.OnLighthouseTracked += OnLighthouseTracked;
         _manna.OnCalibrationSuccess += OnCalibrationSuccess;
+        
+        _gameEventController.OnSpawnerMove += pose =>
+        {
+            hostileController.transform.position = pose.position;
+        };
     }
 
     #region ConjureKit Callbacks
@@ -115,12 +122,15 @@ public class Main : MonoBehaviour
         _myId = session.ParticipantId;
         _session = session;
         
+        _gameEventController.OnGameStart = GameStart;
+        _gameEventController.OnGameOver = GameOver;
+        
         uiManager.SetSessionId(_session.Id);
     }
 
     private void OnLeft(Session lastSession)
     {
-
+        GameOver();
     }
 
     private void OnParticipantLeft(uint participantId)
@@ -162,6 +172,12 @@ public class Main : MonoBehaviour
         _currentGameState = gameState;
     }
 
+    private void ToggleLighthouse()
+    {
+        _isSharing = !_isSharing;
+        _manna.SetLighthouseVisible(_isSharing);
+    }
+    
     private void ToggleOcclusion(bool state)
     {
         arOcclusionManager.requestedHumanDepthMode = state ? HumanSegmentationDepthMode.Fastest : HumanSegmentationDepthMode.Disabled;
@@ -194,7 +210,14 @@ public class Main : MonoBehaviour
         healthBar.UpdateHealth(_health/(float)maxHealth);
         healthBar.ShowHealthBar(true);
         uiManager.ChangeUiState(GameState.GameOn);
+    }
+    
+    private void SendGameStart()
+    {
+        _spawner = true;
         OnGameStart?.Invoke();
+        _gameEventController.SendGameState(true);
+        GameStart();
     }
 
     private void GameOver()
@@ -209,6 +232,12 @@ public class Main : MonoBehaviour
         {
             uiManager.ShowScoreBoard(result, _myName);
         });
+    }
+    
+    private void SendGameOver()
+    {
+        _gameEventController.SendGameState(false);
+        GameOver();
     }
 
     private void Update()
@@ -239,7 +268,7 @@ public class Main : MonoBehaviour
         if (!_planeHit) return;
         
         var pose = new Pose(placementIndicator.position, quaternion.identity);
-        hostileController.transform.position = pose.position;
+        _gameEventController.SendSpawnerPos(pose);
     }
 
     private void ShootLogic()
@@ -284,7 +313,7 @@ public class Main : MonoBehaviour
 
         if (_health <= 0)
         {
-            GameOver();
+            SendGameOver();
         }
     }
 }
