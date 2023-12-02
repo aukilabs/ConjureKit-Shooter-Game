@@ -53,6 +53,7 @@ public class Main : MonoBehaviour
     private bool _planeOcc;
     private bool _planeHit;
     private GameObject _planePrefab;
+    private Entity _myEntity;
     
     private List<ARRaycastHit> _arRaycastHits = new();
     private List<Entity> _participantEntities = new();
@@ -61,6 +62,7 @@ public class Main : MonoBehaviour
     private bool _onDestroy;
 
     private HostilesSystem _hostilesSystem;
+    private ParticipantsSystem _participantsSystem;
     
     public event Action OnGameStart;
     public event Action OnGameEnd;
@@ -96,7 +98,7 @@ public class Main : MonoBehaviour
         healthBar.SetHealthBarAlpha(0f);
 
         uiManager.OnChangeState += OnChangeGameState;
-        participantsController.SetListener(this);
+        participantsController.Initialize(_conjureKit, arCamera.transform);
         _gameEventController.Initialize(_conjureKit, _vikja);
         _conjureKit.Connect();
     }
@@ -131,10 +133,19 @@ public class Main : MonoBehaviour
             _hostilesSystem.GetComponentsTypeId();
         });
         
+        _participantsSystem = new ParticipantsSystem(_session);
+        _session.RegisterSystem(_participantsSystem, () =>
+        {
+            _participantsSystem.GetComponentsTypeId();
+            participantsController.GetAllPreviousComponents(_participantsSystem);
+        });
+        
         _gameEventController.OnGameStart = GameStart;
         _gameEventController.OnGameOver = GameOver;
+        _participantsSystem.OnParticipantScores += UpdateParticipantsEntity;
         
         hostileController.SetListener(_hostilesSystem);
+        participantsController.SetListener(_participantsSystem);
         
         uiManager.SetSessionId(_session.Id);
     }
@@ -142,8 +153,13 @@ public class Main : MonoBehaviour
     private void OnLeft(Session lastSession)
     {
         hostileController.RemoveListener();
+        participantsController.RemoveListener(_participantsSystem);
+        _participantsSystem.OnParticipantScores -= UpdateParticipantsEntity;
+        _participantEntities.Clear();
+        _spawnedGun.Clear();
         GameOver();
         _hostilesSystem = null;
+        _session = null;
     }
 
     private void OnParticipantLeft(uint participantId)
@@ -153,6 +169,7 @@ public class Main : MonoBehaviour
 
     private void OnEntityDeleted(uint entityId)
     {
+        participantsController.OnParticipantLeft(entityId);
         UpdateParticipantsEntity();
 
         if (_participantEntities.Count < 2)
@@ -163,7 +180,9 @@ public class Main : MonoBehaviour
 
     private void OnParticipantEntityCreated(Entity entity)
     {
-
+        _myEntity = entity;
+        _spawnedGun.Initialize(_participantsSystem, entity.Id);
+        _participantsSystem.AddParticipantComponent(entity.Id, _myName);
     }
 
     private void OnStateChange(State state)
@@ -172,6 +191,11 @@ public class Main : MonoBehaviour
         uiManager.UpdateState(_currentState.ToString());
         var sessionReady = _currentState is State.Calibrated or State.JoinedSession;
         _arCameraFrameFeeder.enabled = sessionReady;
+        
+        if (state == State.Disconnected)
+        {
+            _conjureKit.Connect();
+        }
     }
 
     private void OnLighthouseTracked(Lighthouse lighthouse, Pose pose, bool closeEnough)
@@ -228,6 +252,7 @@ public class Main : MonoBehaviour
         healthBar.UpdateHealth(_health/(float)maxHealth);
         healthBar.ShowHealthBar(true);
         uiManager.ChangeUiState(GameState.GameOn);
+        participantsController.Restart();
         UpdateParticipantsEntity();
     }
     
@@ -310,7 +335,7 @@ public class Main : MonoBehaviour
                     if (hostile.Hit(hitInfo.point))
                     {
                         _score += 10;
-                        OnParticipantScore?.Invoke(0, new ScoreData(){name = _myName, score = _score});
+                        _participantsSystem.UpdateParticipantScoreComponent(_myEntity.Id, _score);
                         uiManager.UpdateScore(_score);
                     }
                 }
@@ -324,6 +349,11 @@ public class Main : MonoBehaviour
     {
         var id = _participantEntities[UnityEngine.Random.Range(0, _participantEntities.Count)].Id;
         return id;
+    }
+    
+    private void UpdateParticipantsEntity(uint id, ScoreData data)
+    {
+        UpdateParticipantsEntity();
     }
     
     private void UpdateParticipantsEntity()

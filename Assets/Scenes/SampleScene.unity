@@ -928,6 +928,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6f689ad1d08fe494ba35f64dd6dc4070, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  participantNameUiPrefab: {fileID: 5410111447140162955, guid: a575ae3844ace44f6b6a1740fd29ddc2, type: 3}
+  shootFxPrefab: {fileID: 3345010084765856049, guid: 34a255d8b31074834a266e2c82ca3c4b, type: 3}
 --- !u!1 &898212917
 GameObject:
   m_ObjectHideFlags: 0
