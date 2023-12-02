@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Auki.ConjureKit;
 using ConjureKitShooter.Models;
 using UnityEngine;
 using Random = UnityEngine.Random;
@@ -29,14 +30,20 @@ namespace ConjureKitShooter.Gameplay
         private int _spawnCount, _totalSpawnCount;
         private Dictionary<uint, HostileScript> _spawnedHostiles = new();
 
+        private Session _session;
+        private HostilesSystem _hostilesSystem;
+        
         private void OnDrawGizmosSelected()
         {
             Gizmos.DrawWireSphere(transform.position, spawnRadius);
         }
 
-        public void Initialize(Main main)
+        public void Initialize(IConjureKit conjureKit, Main main)
         {
             _main = main;
+
+            conjureKit.OnJoined += session => _session = session;
+            conjureKit.OnLeft += session => _session = null; 
 
             main.OnGameStart += StartSpawning;
             main.OnGameEnd += StopSpawning;
@@ -46,6 +53,21 @@ namespace ConjureKitShooter.Gameplay
             _hostileSpeed = easySetting.hostileSpeed;
 
             _player = Camera.main.transform;
+        }
+        
+        public void SetListener(HostilesSystem hostilesSystem)
+        {
+            _hostilesSystem = hostilesSystem;
+            _hostilesSystem.InvokeSpawnHostile += SpawnHostileInstance;
+            _hostilesSystem.InvokeDestroyHostile += DestroyHostileListener;
+            _hostilesSystem.InvokeHitFx += SyncHitFx;
+        }
+
+        public void RemoveListener()
+        {
+            _hostilesSystem.InvokeSpawnHostile -= SpawnHostileInstance;
+            _hostilesSystem.InvokeDestroyHostile -= DestroyHostileListener;
+            _hostilesSystem.InvokeHitFx -= SyncHitFx;
         }
 
         private void StartSpawning()
@@ -75,19 +97,16 @@ namespace ConjureKitShooter.Gameplay
             if (!(Time.time > _spawnTime)) return;
         
             var pos = transform.position + spawnOffset + (spawnRadius * Random.insideUnitSphere);
-            var targetPos = _player.position;
+
             _spawnTime = Time.time + Random.Range(_minInterval, _maxInterval);
-            var types = Enum.GetValues(typeof(HostileType));
-            var spawnData = new SpawnData()
+
+            var targetEntityId = _main.GetRandomParticipantEntityId();
+
+            var pose = new Pose(pos, Quaternion.identity);
+            _session.AddEntity(pose, entity =>
             {
-                startPos = pos,
-                speed =  _hostileSpeed,
-                targetPos = targetPos,
-                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                type = (HostileType)types.GetValue(Random.Range(0, types.Length))
-            };
-        
-            SpawnHostileInstance(spawnData);
+                _hostilesSystem.AddHostile(entity, _hostileSpeed, targetEntityId);
+            }, Debug.LogError);
 
             _spawnCount++;
 
@@ -106,20 +125,56 @@ namespace ConjureKitShooter.Gameplay
         
             var hostile = Instantiate(GetHostile(data.type), data.startPos, Quaternion.identity);
             hostile.Initialize(
-                (uint)_totalSpawnCount,
+                data.linkedEntity.Id,
                 data.targetPos, 
                 data.speed, 
+                _hostilesSystem.SyncHitFx,
                 _main.OnHit,
                 InvokeRemoveHostileInstance, 
                 timeCompensation);
             hostile.transform.SetParent(hostileGroup);
-            _spawnedHostiles.Add((uint)_totalSpawnCount, hostile);
-            _totalSpawnCount++;
+            _spawnedHostiles.Add(data.linkedEntity.Id, hostile);
+        }
+        
+        private void DestroyHostileListener(uint entityId)
+        {
+            if (!_spawnedHostiles.ContainsKey(entityId))
+            {
+                return;
+            }
+
+            //Destroy the enemy instance
+            _spawnedHostiles[entityId].DestroyInstance();
+            _spawnedHostiles.Remove(entityId);
+
+            //Check if the entity belongs to this local participant
+            var hostileEntity = _session.GetEntity(entityId);
+            if (hostileEntity == null || hostileEntity.ParticipantId != _session.ParticipantId)
+                return;
+
+            //If it is, then delete the Entity
+            _session.DeleteEntity(entityId, null);
         }
 
         private void InvokeRemoveHostileInstance(uint entityId)
         {
+            _hostilesSystem.DeleteHostile(entityId);
             _spawnedHostiles.Remove(entityId);
+        }
+        
+        private void SyncHitFx(HitData data)
+        {
+            if (!_spawnedHostiles.ContainsKey(data.EntityId))
+            {
+                //skip if no hostile exist with the above entity Id
+                return;
+            }
+
+            //skip if the hit position is zero (default)
+            if (data.Pos.ToVector3() == Vector3.zero) return;
+
+            //trigger the spawn hit fx, to the related ghost
+            _spawnedHostiles[data.EntityId].SpawnHitFx(data);
         }
 
         private void IncreaseDifficulty()

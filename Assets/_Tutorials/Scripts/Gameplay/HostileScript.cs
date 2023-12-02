@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using ConjureKitShooter.Models;
 
 namespace ConjureKitShooter.Gameplay
 {
@@ -25,6 +26,7 @@ namespace ConjureKitShooter.Gameplay
             uint id,
             Vector3 target, 
             float speed,
+            Action<uint,Vector3> onHit,
             Action onPlayerHit, 
             Action<uint> onDestroy,
             float timeCompensation = 0f)
@@ -36,6 +38,7 @@ namespace ConjureKitShooter.Gameplay
             _targetPos = target;
             _speed = speed;
 
+            _onHit = onHit;
             _onPlayerHit = onPlayerHit;
             _onDestroy = onDestroy;
 
@@ -84,6 +87,18 @@ namespace ConjureKitShooter.Gameplay
             GetComponent<Collider>().enabled = false;
             Destroy(visual);
             Destroy(gameObject, destroyDuration);
+        }
+        
+        public void SpawnHitFx(HitData obj)
+        {
+            if (hitParticles == null)
+                return;
+
+            var particleT = hitParticles.transform;
+            particleT.position = obj.Pos.ToVector3();
+            particleT.rotation = Quaternion.LookRotation(particleT.position - transform.position);
+            hitParticles.Play();
+            PlaySound(hitSfx);
         }
 
         private void FixedUpdate()

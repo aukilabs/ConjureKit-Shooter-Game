@@ -55,10 +55,13 @@ public class Main : MonoBehaviour
     private GameObject _planePrefab;
     
     private List<ARRaycastHit> _arRaycastHits = new();
+    private List<Entity> _participantEntities = new();
     
     private float _nextCalibrationFx;
     private bool _onDestroy;
 
+    private HostilesSystem _hostilesSystem;
+    
     public event Action OnGameStart;
     public event Action OnGameEnd;
     public event Action<uint, ScoreData> OnParticipantScore;
@@ -87,7 +90,7 @@ public class Main : MonoBehaviour
 
         ToggleOcclusion(false);
         
-        hostileController.Initialize(this);
+        hostileController.Initialize(_conjureKit, this);
         uiManager.Initialize(SendGameStart, PlaceSpawner, ToggleLighthouse, OnNameSet, ToggleAudio);
         uiManager.UpdateScore(0);
         healthBar.SetHealthBarAlpha(0f);
@@ -121,16 +124,26 @@ public class Main : MonoBehaviour
     {
         _myId = session.ParticipantId;
         _session = session;
+
+        _hostilesSystem = new HostilesSystem(_session);
+        _session.RegisterSystem(_hostilesSystem, () =>
+        {
+            _hostilesSystem.GetComponentsTypeId();
+        });
         
         _gameEventController.OnGameStart = GameStart;
         _gameEventController.OnGameOver = GameOver;
+        
+        hostileController.SetListener(_hostilesSystem);
         
         uiManager.SetSessionId(_session.Id);
     }
 
     private void OnLeft(Session lastSession)
     {
+        hostileController.RemoveListener();
         GameOver();
+        _hostilesSystem = null;
     }
 
     private void OnParticipantLeft(uint participantId)
@@ -140,7 +153,12 @@ public class Main : MonoBehaviour
 
     private void OnEntityDeleted(uint entityId)
     {
+        UpdateParticipantsEntity();
 
+        if (_participantEntities.Count < 2)
+        {
+            GameOver();
+        }
     }
 
     private void OnParticipantEntityCreated(Entity entity)
@@ -210,6 +228,7 @@ public class Main : MonoBehaviour
         healthBar.UpdateHealth(_health/(float)maxHealth);
         healthBar.ShowHealthBar(true);
         uiManager.ChangeUiState(GameState.GameOn);
+        UpdateParticipantsEntity();
     }
     
     private void SendGameStart()
@@ -298,6 +317,32 @@ public class Main : MonoBehaviour
             }
 
             _spawnedGun.ShootFx(hit);
+        }
+    }
+
+    public uint GetRandomParticipantEntityId()
+    {
+        var id = _participantEntities[UnityEngine.Random.Range(0, _participantEntities.Count)].Id;
+        return id;
+    }
+    
+    private void UpdateParticipantsEntity()
+    {
+        var participants = _session.GetParticipants();
+
+        if (participants.Count == _participantEntities.Count) return;
+        
+        _participantEntities.Clear();
+
+        foreach (var participant in _session.GetParticipants())
+        {
+            foreach (var entity in _session.GetParticipantEntities(participant.Id))
+            {
+                if (entity.Flag == EntityFlag.EntityFlagParticipantEntity)
+                {
+                    _participantEntities.Add(entity);
+                }
+            }
         }
     }
 
