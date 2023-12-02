@@ -4,8 +4,8 @@ namespace ConjureKitShooter.UI
 {
     public class ParticipantNameUi : MonoBehaviour
     {
-        [SerializeField] private TMPro.TextMeshPro nameDisplay;
-        [SerializeField] private TMPro.TextMeshPro scoreDisplay;
+        [SerializeField] private TMPro.TMP_Text nameDisplay;
+        [SerializeField] private TMPro.TMP_Text scoreDisplay;
 
         public void SetName(string playerName)
         {

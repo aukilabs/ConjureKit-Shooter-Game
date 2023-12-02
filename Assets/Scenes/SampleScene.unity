@@ -541,11 +541,11 @@ MonoBehaviour:
   easySetting:
     minInterval: 0.8
     maxInterval: 1.5
-    droneSpeed: 3
+    hostileSpeed: 3
   hardSetting:
     minInterval: 0.5
     maxInterval: 0.8
-    droneSpeed: 5
+    hostileSpeed: 5
 --- !u!95 &454273217
 Animator:
   serializedVersion: 5
